@@ -6,6 +6,74 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, get_scheduler
 from datasets import load_dataset
 from tqdm import tqdm
 
+# --- Tokenize the Dataset ---
+def preprocess_function(examples, tokenizer):
+    return tokenizer(
+        examples["sentence1"],
+        examples["sentence2"],
+        truncation=True,
+        padding="max_length",
+        max_length=128,
+    )
+
+
+def evaluate_model(model, dataloader, metric):
+    all_preds = []
+    all_labels = []
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps")
+    #device = torch.device("mps")
+    model.to(device)
+    model.eval()
+
+    for batch in dataloader:
+        with torch.no_grad():
+            outputs = model(
+                input_ids=batch["input_ids"].to(device),
+                attention_mask=batch["attention_mask"].to(device),
+                token_type_ids=batch["token_type_ids"].to(device)
+            )
+
+            predictions = torch.argmax(outputs.logits, dim=-1)
+            all_preds.extend(predictions.cpu().numpy())
+            all_labels.extend(batch["label"].cpu().numpy())
+
+    # Compute metric
+    final_score = metric.compute(predictions=all_preds, references=all_labels)
+    #print(final_score)
+    return final_score
+
+
+# ---- Training Loop ----
+def train_model(model, optimizer, lr_scheduler, train_dataloader, eval_dataloader, num_training_steps, num_epochs, run, n_iter=100):
+    model.train()
+    progress_bar = tqdm(range(num_training_steps))
+
+    for epoch in range(num_epochs):
+        for batch in train_dataloader:
+            batch = {k: v.to(model.device) for k, v in batch.items()}
+
+            outputs = model(
+                input_ids=batch["input_ids"],
+                attention_mask=batch["attention_mask"],
+                token_type_ids=batch["token_type_ids"],
+                labels=batch["label"]
+            )
+            loss = outputs.loss
+
+            loss.backward()
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
+            progress_bar.update(1)
+            
+            # Log the loss to wandb
+            run.log({"loss": loss.item()})
+            if progress_bar.n % n_iter == 0:
+                score = evaluate_model(model, eval_dataloader)
+                run.log({"eval_accuracy": score["accuracy"], "f1": score["f1"]})
+
+
 def train(model, train_dataset, val_dataset, epochs=3, batch_size=8, learning_rate=5e-5):
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
