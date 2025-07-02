@@ -31,7 +31,7 @@ def main():
     run = wandb.init(
         #project="qmodel-ft",
         project="qmodel-ft-check",
-        name="qmodel-ft-training",
+        #name="qmodel-ft-training",
         entity=entity_name,
         config={
             "model_name": model_name,
@@ -107,7 +107,7 @@ def main():
     print("Training complete.")
 
     evaluate_model(model,
-                   eval_dataloader=eval_dataloader,
+                   dataloader=eval_dataloader,
                    metric=metric)
     print("Evaluation complete.")
     print()
