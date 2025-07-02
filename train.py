@@ -63,7 +63,7 @@ def main():
         metric = evaluate.load(task_name)
     print(f"Loaded dataset: {task_name}")
     
-    encoded_dataset = dataset.map(preprocess_function, batched=True)
+    encoded_dataset = dataset.map(lambda x: preprocess_function(x, tokenizer=tokenizer), batched=True)
     
     # Torch format
     encoded_dataset.set_format(
